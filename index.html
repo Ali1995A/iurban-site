@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中国人口预测分析工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg-page: #F5F5F7; --text-main: #1D1D1F; --text-sub: #86868B;
+            --pop-dark: #3634A3; --pop-light: #7A78FF; --birth-dark: #0051A8; 
+            --birth-light: #409CFF; --death-dark: #B36B00; --death-light: #FFAA33;
+            --glass: rgba(255, 255, 255, 0.85); --border: rgba(255, 255, 255, 0.5);
+            --shadow: 0 8px 30px rgba(0,0,0,0.08); --radius: 20px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+            background: var(--bg-page); color: var(--text-main); margin: 0; padding: 40px 20px;
+            display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+        }
+        .container { width: 100%; max-width: 1200px; display: flex; flex-direction: column; gap: 24px; }
+        header { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 10px; flex-wrap: wrap; gap: 20px; }
+        h1 { font-size: 28px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: -0.5px; }
+        p.subtitle { margin: 0; color: var(--text-sub); font-size: 14px; }
+        .segmented-control { background: rgba(118, 118, 128, 0.12); border-radius: 10px; padding: 3px; display: flex; width: 300px; }
+        .segment-btn { flex: 1; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #555; 
+            border-radius: 8px; padding: 8px 0; cursor: pointer; transition: all 0.2s; }
+        .segment-btn.active { background: #fff; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .control-panel { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); 
+            border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; 
+            background: rgba(0,0,0,0.02); border-bottom: 1px solid var(--border); }
+        .panel-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+        .panel-toggle { background: none; border: none; font-size: 18px; cursor: pointer; color: var(--text-sub); 
+            width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+        .panel-toggle:hover { background: rgba(0,0,0,0.05); }
+        .panel-content { padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }
+        .control-panel.collapsed .panel-content { display: none; }
+        .preset-scenarios { grid-column: 1 / -1; display: flex; gap: 8px; margin-bottom: 12px; }
+        .scenario-btn { flex: 1; padding: 10px; background: rgba(0,0,0,0.04); border: 2px solid transparent; 
+            border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .scenario-btn:hover { background: rgba(0,0,0,0.08); }
+        .scenario-btn.active { background: var(--pop-light); color: white; border-color: var(--pop-dark); }
+        .param-group { display: flex; flex-direction: column; gap: 8px; }
+        .param-label { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 500; }
+        .param-value { font-weight: 600; color: var(--pop-dark); background: rgba(122, 120, 255, 0.1); 
+            padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+        .param-slider { width: 100%; height: 6px; border-radius: 3px; background: rgba(0,0,0,0.1); outline: none; -webkit-appearance: none; }
+        .param-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; 
+            background: var(--pop-dark); cursor: pointer; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        .param-slider::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--pop-dark); 
+            cursor: pointer; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        .radio-group { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
+        .radio-label { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+        .radio-label input[type="radio"] { margin: 0; }
+        .param-actions { grid-column: 1 / -1; display: flex; gap: 12px; justify-content: flex-end; 
+            margin-top: 10px; padding-top: 16px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+        .param-btn { padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px; 
+            font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .param-btn.primary { background: var(--pop-dark); color: white; }
+        .param-btn.primary:hover { background: var(--pop-light); transform: translateY(-1px); }
+        .param-btn.secondary { background: rgba(0,0,0,0.08); color: var(--text-main); }
+        .param-btn.secondary:hover { background: rgba(0,0,0,0.12); }
+        .param-help { cursor: help; opacity: 0.6; transition: opacity 0.2s; margin-left: 4px; font-size: 12px; }
+        .param-help:hover { opacity: 1; }
+        .event-markers { grid-column: 1 / -1; background: rgba(0,0,0,0.02); padding: 12px; border-radius: 8px; }
+        .event-marker { display: inline-flex; align-items: center; gap: 6px; margin-right: 16px; 
+            font-size: 11px; color: var(--text-sub); }
+        .event-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--pop-dark); }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .card { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); 
+            border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-3px); }
+        .card-label { font-size: 11px; font-weight: 700; color: var(--text-sub); 
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .card-val { font-size: 32px; font-weight: 700; letter-spacing: -1px; }
+        .card-unit { font-size: 14px; font-weight: 500; color: var(--text-sub); margin-left: 4px; }
+        .advanced-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+        .metric-card { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--border); 
+            border-radius: 12px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+        .metric-label { font-size: 11px; color: var(--text-sub); text-transform: uppercase; 
+            letter-spacing: 0.5px; margin-bottom: 6px; font-weight: 600; }
+        .metric-value { font-size: 20px; font-weight: 700; color: var(--text-main); }
+        .chart-controls { display: flex; gap: 12px; flex-wrap: wrap; }
+        .control-btn { padding: 8px 16px; background: var(--glass); border: 1px solid var(--border); 
+            border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; 
+            transition: all 0.2s; backdrop-filter: blur(20px); }
+        .control-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .chart-box { height: 600px; background: rgba(255,255,255,0.6); backdrop-filter: blur(30px); 
+            border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+        #chart { width: 100%; height: 100%; }
+        .footer { text-align: center; font-size: 12px; color: var(--text-sub); margin-top: 20px; }
+        @media (max-width: 768px) {
+            .stats-grid, .advanced-metrics { grid-template-columns: 1fr; }
+            .chart-box { height: 450px; }
+            .panel-content { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>中国人口预测分析工具</h1>
+                <p class="subtitle">历史数据分析与未来趋势预测 (1985-2045)</p>
+            </div>
+            <div class="segmented-control">
+                <button class="segment-btn active" onclick="switchView('pop')">总人口趋势</button>
+                <button class="segment-btn" onclick="switchView('vital')">出生 vs 死亡</button>
+            </div>
+        </header>
+
+        <div class="advanced-metrics" id="advanced-metrics"></div>
+
+        <div class="control-panel" id="control-panel">
+            <div class="panel-header">
+                <h3>预测参数调整</h3>
+                <button class="panel-toggle" onclick="togglePanel()">−</button>
+            </div>
+            <div class="panel-content">
+                <div class="preset-scenarios">
+                    <button class="scenario-btn" onclick="loadScenario('conservative')">🔒 保守</button>
+                    <button class="scenario-btn active" onclick="loadScenario('neutral')">⚖️ 中性</button>
+                    <button class="scenario-btn" onclick="loadScenario('aggressive')">🚀 乐观</button>
+                </div>
+                
+                <div class="param-group">
+                    <label class="param-label">
+                        <span>基准衰减率<span class="param-help" title="每年出生人口相对前一年比例">ℹ️</span></span>
+                        <span class="param-value" id="base-decay-value">0.98</span>
+                    </label>
+                    <input type="range" id="base-decay" min="0.95" max="1.0" step="0.001" value="0.98" class="param-slider">
+                </div>
+                
+                <div class="param-group">
+                    <label class="param-label">
+                        <span>乐观衰减率<span class="param-help" title="政策效果显著">ℹ️</span></span>
+                        <span class="param-value" id="opt-decay-value">0.995</span>
+                    </label>
+                    <input type="range" id="opt-decay" min="0.99" max="1.005" step="0.001" value="0.995" class="param-slider">
+                </div>
+                
+                <div class="param-group">
+                    <label class="param-label">
+                        <span>悲观衰减率<span class="param-help" title="生育意愿持续下降">ℹ️</span></span>
+                        <span class="param-value" id="pess-decay-value">0.955</span>
+                    </label>
+                    <input type="range" id="pess-decay" min="0.90" max="0.98" step="0.001" value="0.955" class="param-slider">
+                </div>
+                
+                <div class="param-group">
+                    <label class="param-label">
+                        <span>死亡率模型</span>
+                        <span class="param-value" id="death-model-value">平衡型</span>
+                    </label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="death-model" value="aging" onchange="updateDeathModel('aging')">
+                            <span>老龄化</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="death-model" value="balanced" checked onchange="updateDeathModel('balanced')">
+                            <span>平衡型</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="death-model" value="medical" onchange="updateDeathModel('medical')">
+                            <span>医疗进步</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="param-group">
+                    <label class="param-label">
+                        <span>老龄化影响<span class="param-help" title="老龄化对死亡率提升">ℹ️</span></span>
+                        <span class="param-value" id="death-aging-value">1.8</span>
+                    </label>
+                    <input type="range" id="death-aging" min="1.0" max="3.0" step="0.1" value="1.8" class="param-slider">
+                </div>
+                
+                <div class="param-group">
+                    <label class="param-label">
+                        <span>医疗进步<span class="param-help" title="医疗技术缓解死亡率">ℹ️</span></span>
+                        <span class="param-value" id="death-medical-value">0.3</span>
+                    </label>
+                    <input type="range" id="death-medical" min="0.1" max="0.8" step="0.05" value="0.3" class="param-slider">
+                </div>
+                
+                <div class="event-markers">
+                    <strong style="font-size: 12px; margin-right: 12px;">历史事件:</strong>
+                    <span class="event-marker"><span class="event-dot"></span>2016 全面二孩</span>
+                    <span class="event-marker"><span class="event-dot"></span>2021 三孩政策</span>
+                    <span class="event-marker"><span class="event-dot" style="background: #FF3B30;"></span>2022 首次负增长</span>
+                </div>
+                
+                <div class="param-actions">
+                    <button class="param-btn secondary" onclick="exportData()">💾 导出</button>
+                    <button class="param-btn secondary" onclick="resetParams()">重置</button>
+                    <button class="param-btn primary" onclick="applyParams()">应用</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-grid" id="stats-container"></div>
+
+        <div class="chart-controls">
+            <button class="control-btn" onclick="exportChart()">📊 导出图表</button>
+            <button class="control-btn" onclick="toggleEventMarkers()">📍 事件标记</button>
+            <button class="control-btn" onclick="runSimulation()">🎲 蒙特卡洛</button>
+        </div>
+
+        <div class="chart-box"><div id="chart"></div></div>
+        
+        <div class="footer">数据来源: 国家统计局 (历史数据) | 模型预测 (预测数据)</div>
+    </div>
+
+    <script>
+        const historyMap = {'1985':[105851,2043,714],'1986':[107507,2384,733],'1987':[109300,2529,731],'1988':[111026,2457,733],'1989':[112704,2407,734],'1990':[114333,2391,759],'1991':[115823,2258,772],'1992':[117171,2119,774],'1993':[118517,2126,783],'1994':[119850,2104,774],'1995':[121121,2063,792],'1996':[122389,2067,799],'1997':[123626,2038,801],'1998':[124761,1942,807],'1999':[125786,1834,810],'2000':[126743,1771,814],'2001':[127627,1702,818],'2002':[128453,1647,821],'2003':[129227,1599,825],'2004':[129988,1593,832],'2005':[130756,1617,849],'2006':[131448,1584,892],'2007':[132129,1594,913],'2008':[132802,1608,935],'2009':[133450,1587,943],'2010':[134091,1588,951],'2011':[135419,1604,960],'2012':[135922,1635,966],'2013':[136726,1640,972],'2014':[137646,1687,977],'2015':[138326,1655,975],'2016':[139232,1786,977],'2017':[140011,1723,986],'2018':[140541,1523,993],'2019':[141008,1465,998],'2020':[141212,1200,998],'2021':[141260,1062,1014],'2022':[141175,956,1041],'2023':[140967,902,1110],'2024':[140828,954,1093]};
+        const startYear = 2024, forecastYears = 21, years = Object.keys(historyMap).sort();
+        let hPop = [], hBirth = [], hDeath = [];
+        years.forEach(y => { hPop.push(historyMap[y][0]); hBirth.push(historyMap[y][1]); hDeath.push(historyMap[y][2]); });
+        
+        let forecastParams = {baseDecay:0.98,optDecay:0.995,pessDecay:0.955,deathModel:'balanced',deathAgingFactor:1.8,deathMedicalProgress:0.3,snakeFactor:0.94,snakeYear:'2025'};
+        const presetScenarios = {conservative:{baseDecay:0.96,optDecay:0.985,pessDecay:0.94,deathAgingFactor:2.0,deathMedicalProgress:0.2},neutral:{baseDecay:0.98,optDecay:0.995,pessDecay:0.955,deathAgingFactor:1.8,deathMedicalProgress:0.3},aggressive:{baseDecay:1.00,optDecay:1.005,pessDecay:0.98,deathAgingFactor:1.5,deathMedicalProgress:0.5}};
+        
+        let showEventMarkers = true;
+        let fData = {pop:{base:[],opt:[],pess:[],diff:[]},birth:{base:[],opt:[],pess:[],diff:[]},death:{base:[]}};
+        
+        function calculateDeathRate(basePop, currentDeath, yearIndex) {
+            let currentDeathRate = currentDeath / basePop;
+            let agingProgress = 1 / (1 + Math.exp(-0.3 * (yearIndex - 10)));
+            let agingEffect, medicalEffect;
+            switch(forecastParams.deathModel) {
+                case 'aging': agingEffect = 1 + (forecastParams.deathAgingFactor * agingProgress); medicalEffect = 1 - (0.1 * (1 - Math.exp(-0.1 * yearIndex))); break;
+                case 'medical': agingEffect = 1 + (1.0 * agingProgress); medicalEffect = 1 - (forecastParams.deathMedicalProgress * (1 - Math.exp(-0.1 * yearIndex))); break;
+                default: agingEffect = 1 + (forecastParams.deathAgingFactor * agingProgress); medicalEffect = 1 - (forecastParams.deathMedicalProgress * (1 - Math.exp(-0.1 * yearIndex)));
+            }
+            let newDeathRate = Math.min(0.016, Math.max(0.007, currentDeathRate * agingEffect * medicalEffect));
+            return Math.round(basePop * newDeathRate);
+        }
+        
+        function generateForecastData() {
+            fData = {pop:{base:[],opt:[],pess:[],diff:[]},birth:{base:[],opt:[],pess:[],diff:[]},death:{base:[]}};
+            let last = {pBase:historyMap['2024'][0],pOpt:historyMap['2024'][0],pPess:historyMap['2024'][0],bBase:historyMap['2024'][1],bOpt:historyMap['2024'][1],bPess:historyMap['2024'][1],d:historyMap['2024'][2]};
+            for (let i = 1; i <= forecastYears; i++) {
+                let year = (startYear + i).toString();
+                last.d = calculateDeathRate(last.pBase, last.d, i);
+                fData.death.base.push(last.d);
+                let isSnake = (year === forecastParams.snakeYear);
+                let rBase = isSnake ? forecastParams.snakeFactor : forecastParams.baseDecay;
+                let rOpt = isSnake ? (forecastParams.snakeFactor + 0.03) : forecastParams.optDecay;
+                let rPess = isSnake ? (forecastParams.snakeFactor - 0.04) : forecastParams.pessDecay;
+                last.bBase = Math.max(200, Math.round(last.bBase * rBase));
+                last.bOpt = Math.max(200, Math.round(last.bOpt * rOpt));
+                last.bPess = Math.max(200, Math.round(last.bPess * rPess));
+                fData.birth.base.push(last.bBase); fData.birth.opt.push(last.bOpt); fData.birth.pess.push(last.bPess); fData.birth.diff.push(last.bOpt - last.bPess);
+                last.pBase += (last.bBase - last.d); last.pOpt += (last.bOpt - last.d); last.pPess += (last.bPess - last.d);
+                fData.pop.base.push(last.pBase); fData.pop.opt.push(last.pOpt); fData.pop.pess.push(last.pPess); fData.pop.diff.push(last.pOpt - last.pPess);
+            }
+        }
+        
+        generateForecastData();
+        const hLen = years.length;
+        const allYears = years.concat(new Array(forecastYears).fill(0).map((_,i) => (startYear+i+1).toString()));
+        const padEnd = (arr) => arr.concat(new Array(forecastYears).fill(null));
+        const join = (histVal, forecastArr) => new Array(hLen - 1).fill(null).concat([histVal]).concat(forecastArr);
+        const joinArea = (forecastArr) => new Array(hLen).fill(null).concat(forecastArr);
+        const chartDom = document.getElementById('chart');
+        const myChart = echarts.init(chartDom);
+        
+        function updateAdvancedMetrics() {
+            const peakPop = Math.max(...hPop), peakYear = years[hPop.indexOf(peakPop)];
+            const finalPop2045 = fData.pop.base[fData.pop.base.length-1];
+            const popDecline = ((peakPop - finalPop2045) / peakPop * 100).toFixed(1);
+            let negativeYear = '未发生';
+            for (let i = 0; i < fData.birth.base.length; i++) {
+                if (fData.birth.base[i] < fData.death.base[i]) { negativeYear = (startYear + i + 1).toString(); break; }
+            }
+            const birthRate2045 = (fData.birth.base[fData.birth.base.length-1] / finalPop2045 * 1000).toFixed(1);
+            const deathRate2045 = (fData.death.base[fData.death.base.length-1] / finalPop2045 * 1000).toFixed(1);
+            document.getElementById('advanced-metrics').innerHTML = `
+                <div class="metric-card"><div class="metric-label">人口峰值年份</div><div class="metric-value">${peakYear}</div></div>
+                <div class="metric-card"><div class="metric-label">峰值到2045降幅</div><div class="metric-value" style="color:#FF3B30;">-${popDecline}%</div></div>
+                <div class="metric-card"><div class="metric-label">持续负增长起始</div><div class="metric-value" style="color:${negativeYear==='未发生'?'#34C759':'#FF9500'};">${negativeYear}</div></div>
+                <div class="metric-card"><div class="metric-label">2045 出生率/死亡率</div><div class="metric-value" style="font-size:16px;">${birthRate2045}‰ / ${deathRate2045}‰</div></div>
+            `;
+        }
+        
+        function updateCards(mode) {
+            let html = '';
+            if(mode === 'pop') {
+                let currentBirthRate = (hBirth[hBirth.length-1] / hPop[hPop.length-1] * 1000).toFixed(1);
+                let currentDeathRate = (hDeath[hDeath.length-1] / hPop[hPop.length-1] * 1000).toFixed(1);
+                html = `<div class="card"><div class="card-label">历史峰值</div><div class="card-val" style="color:var(--pop-dark)">14.12<span class="card-unit">亿</span></div></div>
+                    <div class="card"><div class="card-label">当前出生/死亡率</div><div class="card-val" style="color:var(--birth-dark)">${currentBirthRate}<span class="card-unit">‰</span> / <span style="color:var(--death-dark)">${currentDeathRate}‰</span></div></div>
+                    <div class="card"><div class="card-label">2045 预测</div><div class="card-val" style="color:var(--pop-light)">${(fData.pop.base[fData.pop.base.length-1]/10000).toFixed(2)}<span class="card-unit">亿</span></div></div>`;
+            } else {
+                let currentNG = hBirth[hBirth.length-1] - hDeath[hDeath.length-1];
+                let futureNG = fData.birth.base[fData.birth.base.length-1] - fData.death.base[fData.death.base.length-1];
+                html = `<div class="card"><div class="card-label">死亡交叉点</div><div class="card-val" style="color:#FF3B30">2022<span class="card-unit">年</span></div></div>
+                    <div class="card"><div class="card-label">当前自然增长</div><div class="card-val" style="color:${currentNG>=0?'#34C759':'#FF3B30'}">${currentNG>0?'+':''}${currentNG}<span class="card-unit">万</span></div></div>
+                    <div class="card"><div class="card-label">2045 自然增长</div><div class="card-val" style="color:${futureNG>=0?'#34C759':'#FF3B30'}">${futureNG>0?'+':''}${futureNG}<span class="card-unit">万</span></div></div>`;
+            }
+            document.getElementById('stats-container').innerHTML = html;
+            updateAdvancedMetrics();
+        }
+        
+        function getOption(mode) {
+            const isPop = mode === 'pop';
+            const colors = isPop ? {hist:'#3634A3',pred:'#7A78FF',area:'rgba(122,120,255,0.2)'} : {bHist:'#0051A8',bPred:'#409CFF',dHist:'#B36B00',dPred:'#FFAA33',bArea:'rgba(64,156,255,0.2)'};
+            const lineConfig = (color, type='solid') => ({type:'line',smooth:0.35,symbol:'circle',symbolSize:6,showSymbol:true,itemStyle:{color:'#fff',borderColor:color,borderWidth:2},lineStyle:{color:color,width:3,type:type}});
+            let series = [];
+            if (isPop) {
+                series.push({name:'历史人口',data:padEnd(hPop),...lineConfig(colors.hist),z:10});
+                series.push({name:'区间下限',data:joinArea(fData.pop.pess),type:'line',stack:'band',lineStyle:{opacity:0},symbol:'none',areaStyle:{opacity:0},silent:true});
+                series.push({name:'预测区间',data:joinArea(fData.pop.diff),type:'line',stack:'band',lineStyle:{opacity:0},symbol:'none',areaStyle:{color:colors.area},tooltip:{show:false}});
+                series.push({name:'预测基准',data:join(hPop[hPop.length-1],fData.pop.base),...lineConfig(colors.pred,'dashed'),z:10});
+            } else {
+                series.push({name:'出生(历史)',data:padEnd(hBirth),...lineConfig(colors.bHist),z:10});
+                series.push({name:'死亡(历史)',data:padEnd(hDeath),...lineConfig(colors.dHist),z:9});
+                series.push({name:'区间下限',data:joinArea(fData.birth.pess),type:'line',stack:'band',lineStyle:{opacity:0},symbol:'none',areaStyle:{opacity:0},silent:true});
+                series.push({name:'预测区间',data:joinArea(fData.birth.diff),type:'line',stack:'band',lineStyle:{opacity:0},symbol:'none',areaStyle:{color:colors.bArea},tooltip:{show:false}});
+                series.push({name:'出生(预测)',data:join(hBirth[hLen-1],fData.birth.base),...lineConfig(colors.bPred,'dashed'),z:10});
+                series.push({name:'死亡(预测)',data:join(hDeath[hLen-1],fData.death.base),...lineConfig(colors.dPred,'dashed'),z:9});
+            }
+            let markLines = [];
+            if (showEventMarkers) {
+                markLines = [{xAxis:'2016',lineStyle:{color:'#34C759',type:'dashed',width:2},label:{formatter:'全面二孩',position:'end',color:'#34C759',fontSize:11,fontWeight:600}},{xAxis:'2021',lineStyle:{color:'#007AFF',type:'dashed',width:2},label:{formatter:'三孩政策',position:'end',color:'#007AFF',fontSize:11,fontWeight:600}},{xAxis:'2022',lineStyle:{color:'#FF3B30',type:'dashed',width:2},label:{formatter:'首次负增长',position:'end',color:'#FF3B30',fontSize:11,fontWeight:600}}];
+            }
+            return {backgroundColor:'transparent',grid:{top:50,right:20,bottom:20,left:60,containLabel:true},tooltip:{trigger:'axis',backgroundColor:'rgba(255,255,255,0.95)',borderWidth:0,padding:12,textStyle:{color:'#1d1d1f'}},xAxis:{type:'category',data:allYears,boundaryGap:false,axisLine:{lineStyle:{color:'#ddd'}},axisLabel:{color:'#86868B'},axisTick:{show:false}},yAxis:{type:'value',scale:isPop,min:isPop?100000:0,splitLine:{lineStyle:{type:'dashed',color:'#eee'}},axisLabel:{color:'#86868B'}},dataZoom:[{type:'slider',bottom:0,height:20,backgroundColor:'#F2F2F7',fillerColor:'rgba(0,0,0,0.05)',startValue:'2000',handleStyle:{color:'#fff',borderColor:'#ccc'},brushSelect:false},{type:'inside'}],series:series.map(s=>{if(s.name==='历史人口'||s.name==='预测基准'){s.markLine={data:markLines,symbol:'none'};}return s;})};
+        }
+        
+        function switchView(mode) {
+            document.querySelectorAll('.segment-btn').forEach(btn => btn.classList.toggle('active', btn.textContent.includes(mode==='pop'?'总人口':'出生')));
+            myChart.clear();
+            myChart.setOption(getOption(mode));
+            updateCards(mode);
+        }
+        
+        function initParamControls() {
+            document.getElementById('base-decay').value = forecastParams.baseDecay;
+            document.getElementById('opt-decay').value = forecastParams.optDecay;
+            document.getElementById('pess-decay').value = forecastParams.pessDecay;
+            document.getElementById('death-aging').value = forecastParams.deathAgingFactor;
+            document.getElementById('death-medical').value = forecastParams.deathMedicalProgress;
+            document.querySelector(`input[name="death-model"][value="${forecastParams.deathModel}"]`).checked = true;
+            updateParamDisplays();
+            ['base-decay','opt-decay','pess-decay','death-aging','death-medical'].forEach(id => {
+                document.getElementById(id).addEventListener('input', (e) => {
+                    let key = id.replace(/-([a-z])/g, (g) => g[1].toUpperCase()).replace('Decay','Decay').replace('deathAging','deathAgingFactor').replace('deathMedical','deathMedicalProgress');
+                    if(key==='baseDecay') forecastParams.baseDecay = parseFloat(e.target.value);
+                    else if(key==='optDecay') forecastParams.optDecay = parseFloat(e.target.value);
+                    else if(key==='pessDecay') forecastParams.pessDecay = parseFloat(e.target.value);
+                    else if(key==='deathAgingFactor') forecastParams.deathAgingFactor = parseFloat(e.target.value);
+                    else if(key==='deathMedicalProgress') forecastParams.deathMedicalProgress = parseFloat(e.target.value);
+                    updateParamDisplays();
+                });
+            });
+        }
+        
+        function updateDeathModel(model) { forecastParams.deathModel = model; updateParamDisplays(); }
+        function updateParamDisplays() {
+            document.getElementById('base-decay-value').textContent = forecastParams.baseDecay.toFixed(3);
+            document.getElementById('opt-decay-value').textContent = forecastParams.optDecay.toFixed(3);
+            document.getElementById('pess-decay-value').textContent = forecastParams.pessDecay.toFixed(3);
+            document.getElementById('death-aging-value').textContent = forecastParams.deathAgingFactor.toFixed(1);
+            document.getElementById('death-medical-value').textContent = forecastParams.deathMedicalProgress.toFixed(1);
+            let modelNames = {'aging':'老龄化主导','balanced':'平衡型','medical':'医疗进步'};
+            document.getElementById('death-model-value').textContent = modelNames[forecastParams.deathModel];
+        }
+        
+        function applyParams() { generateForecastData(); switchView(document.querySelector('.segment-btn.active').textContent.includes('总人口')?'pop':'vital'); showToast('✅ 参数已应用'); }
+        function resetParams() { forecastParams = {baseDecay:0.98,optDecay:0.995,pessDecay:0.955,deathModel:'balanced',deathAgingFactor:1.8,deathMedicalProgress:0.3,snakeFactor:0.94,snakeYear:'2025'}; initParamControls(); applyParams(); }
+        function togglePanel() { const panel = document.getElementById('control-panel'); panel.classList.toggle('collapsed'); document.querySelector('.panel-toggle').textContent = panel.classList.contains('collapsed')?'+':'−'; }
+        
+        function loadScenario(name) {
+            Object.assign(forecastParams, presetScenarios[name]);
+            initParamControls();
+            document.querySelectorAll('.scenario-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            applyParams();
+        }
+        
+        function exportData() {
+            const data = {历史数据:historyMap,预测数据:fData,参数设置:forecastParams,生成时间:new Date().toISOString()};
+            const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `人口预测_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('📥 数据已导出');
+        }
+        
+        function exportChart() {
+            const url = myChart.getDataURL({type:'png',pixelRatio:2,backgroundColor:'#fff'});
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `人口预测图表_${new Date().toISOString().split('T')[0]}.png`;
+            a.click();
+            showToast('📊 图表已导出');
+        }
+        
+        function toggleEventMarkers() {
+            showEventMarkers = !showEventMarkers;
+            switchView(document.querySelector('.segment-btn.active').textContent.includes('总人口')?'pop':'vital');
+            showToast(showEventMarkers?'📍 事件标记已开启':'📍 事件标记已关闭');
+        }
+        
+        function runSimulation() {
+            showToast('🎲 正在运行模拟...');
+            setTimeout(() => {
+                const results = [];
+                for (let i = 0; i < 1000; i++) {
+                    let tempParams = {...forecastParams,baseDecay:forecastParams.baseDecay+(Math.random()-0.5)*0.02};
+                    let pop = historyMap['2024'][0], birth = historyMap['2024'][1], death = historyMap['2024'][2];
+                    for (let j = 1; j <= forecastYears; j++) {
+                        death = calculateDeathRate(pop, death, j);
+                        birth = Math.round(birth * tempParams.baseDecay);
+                        pop += (birth - death);
+                    }
+                    results.push(pop);
+                }
+                results.sort((a,b)=>a-b);
+                const p5=results[Math.floor(results.length*0.05)], median=results[Math.floor(results.length*0.5)], p95=results[Math.floor(results.length*0.95)];
+                showToast(`✅ 模拟完成! 2045人口: ${median.toFixed(0)}万 (${p5.toFixed(0)}-${p95.toFixed(0)})`);
+            }, 100);
+        }
+        
+        function showToast(msg) {
+            const existing = document.querySelector('.toast-message');
+            if (existing) existing.remove();
+            const toast = document.createElement('div');
+            toast.className = 'toast-message';
+            toast.textContent = msg;
+            toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#3634A3;color:white;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;z-index:1000;box-shadow:0 4px 12px rgba(0,0,0,0.15);transform:translateX(100%);transition:transform 0.3s';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.style.transform = 'translateX(0)', 10);
+            setTimeout(() => { toast.style.transform = 'translateX(100%)'; setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+        
+        switchView('pop');
+        initParamControls();
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>
